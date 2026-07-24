@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+pdfplumber
+pypdf
+chromadb
+sentence-transformers
+rank_bm25
+python-multipart
+pyjwt
+groq
+python-dotenv
