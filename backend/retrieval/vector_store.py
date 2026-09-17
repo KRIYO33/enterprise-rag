@@ -70,11 +70,17 @@ def index_chunks(chunks: list[dict]) -> int:
 def vector_search(query: str, top_k: int = 20) -> list[dict]:
     model = get_model()
     collection = get_collection()
+    count = collection.count()
+    if count == 0:
+        return []
+    n_results = min(top_k, count)
     query_embedding = model.encode([query]).tolist()
 
-    results = collection.query(query_embeddings=query_embedding, n_results=top_k)
+    results = collection.query(query_embeddings=query_embedding, n_results=n_results)
 
     hits = []
+    if not results or not results["ids"] or not results["ids"][0]:
+        return hits
     for i in range(len(results["ids"][0])):
         meta = results["metadatas"][0][i]
         hits.append({

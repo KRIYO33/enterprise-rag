@@ -1,13 +1,13 @@
-FROM python:3.11-slim
-
+FROM node:20-slim AS build
 WORKDIR /app
+COPY frontend/package*.json ./
+RUN npm install
+COPY frontend/ .
+RUN npm run build
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY backend/ backend/
-COPY data/ data/
-
-EXPOSE 8000
-
-CMD ["uvicorn", "backend.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+FROM node:20-slim
+WORKDIR /app
+RUN npm install -g serve
+COPY --from=build /app/dist ./dist
+EXPOSE 3000
+CMD ["serve", "-s", "dist", "-l", "3000"]

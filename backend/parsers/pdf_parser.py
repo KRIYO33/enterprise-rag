@@ -23,7 +23,7 @@ ROLE_MAP = {
 
 def infer_department(filepath: str):
     department = os.path.basename(os.path.dirname(filepath))
-    allowed_roles = ROLE_MAP.get(department, ["Admin"])
+    allowed_roles = ROLE_MAP.get(department, [department, "Admin"])
     return department, allowed_roles
 
 

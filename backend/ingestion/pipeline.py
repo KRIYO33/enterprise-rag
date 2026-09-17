@@ -8,6 +8,32 @@ _last_ingest_stats = {"total_documents": 0, "total_chunks": 0, "chunks_per_depar
 
 
 def get_last_ingest_stats() -> dict:
+    global _last_ingest_stats
+    if _last_ingest_stats.get("total_chunks", 0) > 0:
+        return _last_ingest_stats
+
+    try:
+        from backend.retrieval.vector_store import get_collection
+        coll = get_collection()
+        count = coll.count()
+        if count > 0:
+            data = coll.get(include=["metadatas"])
+            metadatas = data.get("metadatas", [])
+            filenames = {m["filename"] for m in metadatas if m and "filename" in m}
+            dept_counts = {}
+            for m in metadatas:
+                if m and "department" in m:
+                    dept = m["department"]
+                    dept_counts[dept] = dept_counts.get(dept, 0) + 1
+            _last_ingest_stats = {
+                "total_documents": len(filenames),
+                "total_chunks": count,
+                "chunks_per_department": dept_counts,
+            }
+            return _last_ingest_stats
+    except Exception as e:
+        print(f"Error computing live stats: {e}")
+
     return _last_ingest_stats
 
 

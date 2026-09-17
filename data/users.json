@@ -1,0 +1,26 @@
+{
+  "admin": [
+    "admin123",
+    "Admin"
+  ],
+  "hr_user": [
+    "hr123",
+    "HR"
+  ],
+  "eng_user": [
+    "eng123",
+    "Engineering"
+  ],
+  "finance_user": [
+    "finance123",
+    "Finance"
+  ],
+  "it_user": [
+    "it123",
+    "IT"
+  ],
+  "emp": [
+    "emp123",
+    "Engineering"
+  ]
+}

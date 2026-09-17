@@ -49,17 +49,18 @@ def build_context(chunks: list[dict]) -> str:
 
 
 def ask(query: str, user_role: str, session_id: str = "default") -> dict:
-    # 1. retrieve + rerank
+    # 1. retrieve candidates via hybrid search
     candidates = hybrid_search(query, top_k_each=20)
-    top_chunks = rerank(query, candidates, top_k=5)
 
-    # 2. RBAC enforcement - THE critical security step
-    allowed_chunks = filter_by_role(top_chunks, user_role)
+    # 2. RBAC enforcement BEFORE reranking - ensure top_k selections are permitted
+    allowed_candidates = filter_by_role(candidates, user_role)
+    top_chunks = rerank(query, allowed_candidates, top_k=5)
+    allowed_chunks = top_chunks
 
     _question_log.append({
         "query": query,
         "role": user_role,
-        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "had_answer": bool(allowed_chunks),
     })
     del _question_log[:-MAX_LOG_SIZE]
@@ -108,7 +109,7 @@ def ask(query: str, user_role: str, session_id: str = "default") -> dict:
         key = (c["filename"], c["page"])
         if key not in seen:
             seen.add(key)
-            sources.append({"document": c["filename"], "page": c["page"]})
+            sources.append({"document": c["filename"], "page": c["page"], "department": c["department"]})
 
     return {"answer": answer, "sources": sources}
 

@@ -1,38 +1,46 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import "./theme.css";
 
 const API_BASE = "http://localhost:8000";
+
+const DEPARTMENTS = ["HR", "Engineering", "Finance", "IT", "Training"];
+const deptVar = (dept) => `var(--dept-${(dept || "training").toLowerCase()})`;
+const deptSoftVar = (dept) => `var(--dept-${(dept || "training").toLowerCase()}-soft)`;
 
 export default function App() {
   const [token, setToken] = useState(null);
   const [role, setRole] = useState(null);
-  const [view, setView] = useState("chat"); // "chat" | "admin"
+  const [view, setView] = useState("chat");
 
   if (!token) {
     return <Login onLogin={(t, r) => { setToken(t); setRole(r); }} />;
   }
 
   return (
-    <div style={styles.page}>
-      <header style={styles.header}>
-        <div>
-          <strong>Enterprise Knowledge Assistant</strong>
-          <span style={styles.roleTag}>{role}</span>
+    <div className="app-shell">
+      <header className="topbar">
+        <div className="brand">
+          <span className="brand-mark" />
+          Enterprise Knowledge Assistant
+          <span className="role-badge">{role}</span>
         </div>
-        <nav>
-          <button style={styles.navBtn} onClick={() => setView("chat")}>Chat</button>
+        <nav className="topnav">
+          <button className={`nav-btn ${view === "chat" ? "active" : ""}`} onClick={() => setView("chat")}>Chat</button>
+          <button className={`nav-btn ${view === "docs" ? "active" : ""}`} onClick={() => setView("docs")}>Manage Documents</button>
           {role === "Admin" && (
             <>
-              <button style={styles.navBtn} onClick={() => setView("admin")}>Admin Stats</button>
-              <button style={styles.navBtn} onClick={() => setView("documents")}>Manage Documents</button>
+              <button className={`nav-btn ${view === "users" ? "active" : ""}`} onClick={() => setView("users")}>Manage Users</button>
+              <button className={`nav-btn ${view === "admin" ? "active" : ""}`} onClick={() => setView("admin")}>Stats</button>
             </>
           )}
-          <button style={styles.navBtn} onClick={() => { setToken(null); setRole(null); }}>Logout</button>
+          <button className="nav-btn" onClick={() => { setToken(null); setRole(null); }}>Logout</button>
         </nav>
       </header>
 
       {view === "chat" && <Chat token={token} />}
       {view === "admin" && <AdminStats token={token} />}
-      {view === "documents" && <DocumentManager token={token} />}
+      {view === "docs" && <DocumentManager token={token} role={role} />}
+      {view === "users" && <UserManager token={token} />}
     </div>
   );
 }
@@ -58,8 +66,9 @@ function Login({ onLogin }) {
         throw new Error(err.detail || "Login failed");
       }
       const data = await res.json();
-      // decode role out of the JWT payload (2nd segment, base64)
-      const payload = JSON.parse(atob(data.access_token.split(".")[1]));
+      const base64Url = data.access_token.split(".")[1];
+      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+      const payload = JSON.parse(atob(base64));
       onLogin(data.access_token, payload.role);
     } catch (err) {
       setError(err.message);
@@ -69,30 +78,47 @@ function Login({ onLogin }) {
   }
 
   return (
-    <div style={styles.loginPage}>
-      <form onSubmit={handleSubmit} style={styles.loginCard}>
-        <h2 style={{ marginTop: 0 }}>Enterprise Knowledge Assistant</h2>
-        <p style={{ color: "#666", fontSize: 14 }}>
-          Try: hr_user/hr123, eng_user/eng123, finance_user/finance123, it_user/it123, admin/admin123
-        </p>
-        <input
-          style={styles.input}
-          placeholder="Username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-        />
-        <input
-          style={styles.input}
-          placeholder="Password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        {error && <div style={styles.error}>{error}</div>}
-        <button style={styles.primaryBtn} disabled={loading}>
-          {loading ? "Logging in..." : "Log in"}
-        </button>
-      </form>
+    <div className="login-page">
+      <div className="login-visual">
+        <div className="dot-grid" />
+        <div className="login-visual-content fade-in">
+          <span className="brand-mark" style={{ marginBottom: 18, display: "inline-block" }} />
+          <h1 className="login-visual-title">Ask anything.<br />See only what you're cleared for.</h1>
+          <p className="login-visual-sub">
+            Hybrid search across your company's documents, with every answer
+            traced back to a source — and access enforced by role, not by trust.
+          </p>
+          <div className="dept-legend">
+            {DEPARTMENTS.map((d) => (
+              <span key={d} className="dept-chip" style={{ background: deptSoftVar(d), color: deptVar(d) }}>
+                <span className="dept-dot" style={{ background: deptVar(d) }} />
+                {d}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="login-form-side">
+        <form onSubmit={handleSubmit} className="login-card fade-in">
+          <h2>Sign in</h2>
+          <p style={{ color: "var(--text-on-paper-muted)", fontSize: 13, marginBottom: 20 }}>
+            Use your company credentials
+          </p>
+          <div className="login-hint">
+            hr_user / hr123 &nbsp;·&nbsp; eng_user / eng123 &nbsp;·&nbsp; finance_user / finance123<br />
+            it_user / it123 &nbsp;·&nbsp; admin / admin123
+          </div>
+          <label className="field-label">Username</label>
+          <input className="text-input" value={username} onChange={(e) => setUsername(e.target.value)} />
+          <label className="field-label">Password</label>
+          <input className="text-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          {error && <div className="error-text">{error}</div>}
+          <button className="primary-btn" disabled={loading}>
+            {loading ? "Signing in…" : "Sign in"}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
@@ -114,10 +140,7 @@ function Chat({ token }) {
     try {
       const res = await fetch(`${API_BASE}/chat`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ query: userMsg.text, session_id: sessionId }),
       });
       const data = await res.json();
@@ -130,29 +153,37 @@ function Chat({ token }) {
   }
 
   return (
-    <div style={styles.chatContainer}>
-      <div style={styles.messages}>
+    <div className="chat-shell">
+      <div className="messages">
         {messages.length === 0 && (
-          <div style={{ color: "#888", textAlign: "center", marginTop: 40 }}>
+          <div className="chat-empty fade-in">
+            <span className="chat-empty-eyebrow">Ready</span>
             Ask something like "How many sick leave days do I get?"
           </div>
         )}
         {messages.map((m, i) => (
-          <div key={i} style={m.role === "user" ? styles.userBubble : styles.assistantBubble}>
-            <div>{m.text}</div>
-            {m.sources && m.sources.length > 0 && <Sources sources={m.sources} />}
+          <div key={i} className={`msg-row ${m.role}`}>
+            <div className={`bubble ${m.role} fade-in`}>
+              <div>{m.text}</div>
+              {m.sources && m.sources.length > 0 && <Sources sources={m.sources} />}
+            </div>
           </div>
         ))}
-        {loading && <div style={styles.assistantBubble}>Thinking...</div>}
+        {loading && (
+          <div className="msg-row assistant">
+            <div className="bubble thinking fade-in">retrieving · reranking · generating…</div>
+          </div>
+        )}
       </div>
-      <form onSubmit={handleAsk} style={styles.inputRow}>
+      <form onSubmit={handleAsk} className="input-row">
         <input
-          style={{ ...styles.input, flex: 1, marginBottom: 0 }}
-          placeholder="Ask a question..."
+          className="text-input"
+          style={{ flex: 1 }}
+          placeholder="Ask a question…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
-        <button style={styles.primaryBtn} disabled={loading}>Send</button>
+        <button className="primary-btn" style={{ width: "auto", padding: "0 22px" }} disabled={loading}>Send</button>
       </form>
     </div>
   );
@@ -161,16 +192,18 @@ function Chat({ token }) {
 function Sources({ sources }) {
   const [open, setOpen] = useState(false);
   return (
-    <div style={{ marginTop: 8 }}>
-      <button style={styles.sourceToggle} onClick={() => setOpen((o) => !o)}>
-        {open ? "Hide" : "Show"} sources ({sources.length})
+    <div>
+      <button className="sources-toggle" onClick={() => setOpen((o) => !o)}>
+        {open ? "hide" : "show"} sources ({sources.length})
       </button>
       {open && (
-        <ul style={styles.sourceList}>
+        <div className="source-chips">
           {sources.map((s, i) => (
-            <li key={i}>{s.document} — page {s.page}</li>
+            <span key={i} className="source-chip" style={{ background: deptSoftVar(s.department), color: deptVar(s.department) }}>
+              {s.document} · p{s.page}
+            </span>
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );
@@ -180,87 +213,121 @@ function AdminStats({ token }) {
   const [stats, setStats] = useState(null);
   const [error, setError] = useState("");
 
-  useState(() => {
+  useEffect(() => {
     fetch(`${API_BASE}/admin/stats`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => {
-        if (!r.ok) throw new Error("Failed to load stats");
-        return r.json();
-      })
+      .then((r) => { if (!r.ok) throw new Error("Failed to load stats"); return r.json(); })
       .then(setStats)
       .catch((e) => setError(e.message));
-  }, []);
+  }, [token]);
 
-  if (error) return <div style={{ padding: 20, color: "crimson" }}>{error}</div>;
-  if (!stats) return <div style={{ padding: 20 }}>Loading...</div>;
+  if (error) return <div className="admin-shell error-text">{error}</div>;
+  if (!stats) return <div className="admin-shell empty-note">Loading…</div>;
+
+  const deptCounts = stats.chunks_per_department || {};
+  const maxCount = Math.max(1, ...Object.values(deptCounts));
 
   return (
-    <div style={{ padding: 24, maxWidth: 700, margin: "0 auto" }}>
-      <h2>Admin Dashboard</h2>
-      <div style={styles.statRow}>
-        <StatCard label="Total Documents" value={stats.total_documents} />
-        <StatCard label="Total Chunks" value={stats.total_chunks} />
+    <div className="admin-shell fade-in">
+      <h2 className="admin-title">Admin Dashboard</h2>
+      <div className="stat-row">
+        <div className="stat-card">
+          <div className="stat-num">{stats.total_documents}</div>
+          <div className="stat-label">Documents indexed</div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-num">{stats.total_chunks}</div>
+          <div className="stat-label">Chunks in vector store</div>
+        </div>
       </div>
-      <h3>Chunks per Department</h3>
-      <ul>
-        {Object.entries(stats.chunks_per_department || {}).map(([dept, count]) => (
-          <li key={dept}>{dept}: {count}</li>
-        ))}
-      </ul>
-      <h3>Recent Questions</h3>
-      <ul>
-        {stats.recent_questions.length === 0 && <li style={{ color: "#888" }}>No questions asked yet.</li>}
-        {stats.recent_questions.map((q, i) => (
-          <li key={i}>
-            <strong>[{q.role}]</strong> {q.query} {q.had_answer ? "" : "(no access)"}
-          </li>
-        ))}
-      </ul>
+
+      <div className="section-label">Chunks per department</div>
+      {Object.entries(deptCounts).map(([dept, count]) => (
+        <div className="dept-bar-row" key={dept}>
+          <span className="dept-bar-label" style={{ color: deptVar(dept) }}>{dept}</span>
+          <div className="dept-bar-track">
+            <div className="dept-bar-fill" style={{ width: `${(count / maxCount) * 100}%`, background: deptVar(dept) }} />
+          </div>
+          <span className="dept-bar-count">{count}</span>
+        </div>
+      ))}
+
+      <div className="section-label">Recent questions</div>
+      {stats.recent_questions.length === 0 && <div className="empty-note">No questions asked yet.</div>}
+      {stats.recent_questions.map((q, i) => (
+        <div className="question-row" key={i}>
+          <span className="source-chip" style={{ background: deptSoftVar(q.role), color: deptVar(q.role) }}>{q.role}</span>
+          <span>{q.query}</span>
+          {!q.had_answer && <span style={{ color: "var(--danger)", fontSize: 11, fontFamily: "var(--font-mono)" }}>no access</span>}
+        </div>
+      ))}
     </div>
   );
 }
 
-function StatCard({ label, value }) {
-  return (
-    <div style={styles.statCard}>
-      <div style={{ fontSize: 28, fontWeight: 700 }}>{value}</div>
-      <div style={{ color: "#666", fontSize: 13 }}>{label}</div>
-    </div>
-  );
-}
-
-function DocumentManager({ token }) {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState("");
-  const [department, setDepartment] = useState("");
+function DocumentManager({ token, role }) {
+  const [docs, setDocs] = useState(null);
+  const [departmentsList, setDepartmentsList] = useState(DEPARTMENTS);
+  const [department, setDepartment] = useState(DEPARTMENTS.includes(role) ? role : "HR");
   const [file, setFile] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
 
-  function load() {
+  // New Department Form State
+  const [newDeptName, setNewDeptName] = useState("");
+  const [newDeptFile, setNewDeptFile] = useState(null);
+
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+
+  function loadDocs() {
     fetch(`${API_BASE}/admin/documents`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => {
-        if (!r.ok) throw new Error("Failed to load documents");
-        return r.json();
-      })
+      .then((r) => r.json())
       .then((d) => {
-        setData(d);
-        if (!department && d.departments.length) setDepartment(d.departments[0]);
+        setDocs(d.documents || []);
+        if (d.departments && d.departments.length > 0) {
+          setDepartmentsList(d.departments);
+        }
       })
-      .catch((e) => setError(e.message));
+      .catch(() => setError("Failed to load documents"));
   }
 
-  useState(() => { load(); }, []);
+  useEffect(() => { loadDocs(); }, [token]);
+
+  async function handleCreateDepartment(e) {
+    e.preventDefault();
+    if (!newDeptName || !newDeptFile) return;
+    setStatus(`Creating department '${newDeptName}' & indexing initial PDF…`);
+    setError("");
+    const formData = new FormData();
+    formData.append("department", newDeptName);
+    formData.append("file", newDeptFile);
+    try {
+      const res = await fetch(`${API_BASE}/admin/departments`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Failed to create department");
+      }
+      setStatus(`Department '${newDeptName}' created successfully with initial PDF.`);
+      setNewDeptName("");
+      setNewDeptFile(null);
+      loadDocs();
+    } catch (err) {
+      setError(err.message);
+      setStatus("");
+    }
+  }
 
   async function handleUpload(e) {
     e.preventDefault();
     if (!file) return;
-    setBusy(true);
-    setMessage("");
+    setStatus("Uploading and re-indexing…");
     setError("");
+    const formData = new FormData();
+    formData.append("department", department);
+    formData.append("file", file);
     try {
-      const formData = new FormData();
-      formData.append("department", department);
-      formData.append("file", file);
       const res = await fetch(`${API_BASE}/admin/documents/upload`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -270,23 +337,171 @@ function DocumentManager({ token }) {
         const err = await res.json();
         throw new Error(err.detail || "Upload failed");
       }
-      setMessage(`Uploaded and re-indexed: ${file.name}`);
+      setStatus("Uploaded and indexed.");
       setFile(null);
-      load();
+      loadDocs();
     } catch (err) {
       setError(err.message);
-    } finally {
-      setBusy(false);
+      setStatus("");
     }
   }
 
   async function handleDelete(dept, filename) {
-    if (!confirm(`Delete ${filename} from ${dept}? This re-indexes all documents.`)) return;
-    setBusy(true);
-    setError("");
-    setMessage("");
+    setStatus(`Removing ${filename}…`);
     try {
       const res = await fetch(`${API_BASE}/admin/documents/${dept}/${filename}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Delete failed");
+      setStatus("Removed and re-indexed.");
+      loadDocs();
+    } catch {
+      setError("Failed to delete document");
+      setStatus("");
+    }
+  }
+
+  const availableDepts = role === "Admin" ? departmentsList : departmentsList.filter((d) => d === role);
+
+  return (
+    <div className="admin-shell fade-in">
+      <h2 className="admin-title">Manage Documents & Departments</h2>
+
+      {role === "Admin" && (
+        <>
+          <div className="section-label">Create New Department (Requires Initial PDF)</div>
+          <form className="upload-panel" onSubmit={handleCreateDepartment} style={{ marginBottom: 24 }}>
+            <div>
+              <label className="field-label">Department Name</label>
+              <input
+                className="text-input"
+                value={newDeptName}
+                onChange={(e) => setNewDeptName(e.target.value)}
+                placeholder="e.g. Legal, Marketing, Operations"
+              />
+            </div>
+            <div>
+              <label className="field-label">Initial PDF Document (Required)</label>
+              <input type="file" accept=".pdf" onChange={(e) => setNewDeptFile(e.target.files[0])} />
+            </div>
+            <button className="primary-btn" style={{ width: "auto", padding: "11px 20px" }} disabled={!newDeptName || !newDeptFile}>
+              Create Department
+            </button>
+          </form>
+        </>
+      )}
+
+      <div className="section-label">Upload Document to Existing Department</div>
+      <form className="upload-panel" onSubmit={handleUpload}>
+        <div>
+          <label className="field-label">Department</label>
+          <select className="select-input" value={department} onChange={(e) => setDepartment(e.target.value)} disabled={role !== "Admin"}>
+            {availableDepts.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="field-label">PDF file</label>
+          <input type="file" accept=".pdf" onChange={(e) => setFile(e.target.files[0])} />
+        </div>
+        <button className="primary-btn" style={{ width: "auto", padding: "11px 20px" }} disabled={!file}>
+          Upload
+        </button>
+      </form>
+      {status && <div className="empty-note" style={{ marginBottom: 14 }}>{status}</div>}
+      {error && <div className="error-text">{error}</div>}
+
+      <div className="section-label">Indexed documents</div>
+      {!docs && <div className="empty-note">Loading…</div>}
+      {docs && docs.length === 0 && <div className="empty-note">No documents yet.</div>}
+      {docs && docs.length > 0 && (
+        <table className="doc-table">
+          <thead>
+            <tr><th>Document</th><th>Department</th><th></th></tr>
+          </thead>
+          <tbody>
+            {docs.map((d, i) => (
+              <tr key={i}>
+                <td>{d.filename}</td>
+                <td>
+                  <span className="source-chip" style={{ background: deptSoftVar(d.department), color: deptVar(d.department) }}>
+                    {d.department}
+                  </span>
+                </td>
+                <td style={{ textAlign: "right" }}>
+                  {role === "Admin" && (
+                    <button className="delete-btn" onClick={() => handleDelete(d.department, d.filename)}>Remove</button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function UserManager({ token }) {
+  const [users, setUsers] = useState(null);
+  const [rolesList, setRolesList] = useState(["Admin", "HR", "Engineering", "Finance", "IT", "Training"]);
+  const [newUsername, setNewUsername] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState("HR");
+  const [selectedUser, setSelectedUser] = useState("");
+  const [changePasswordVal, setChangePasswordVal] = useState("");
+  const [status, setStatus] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch(`${API_BASE}/admin/documents`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.departments && d.departments.length > 0) {
+          setRolesList(Array.from(new Set(["Admin", ...d.departments])));
+        }
+      })
+      .catch(() => {});
+  }, [token]);
+
+  function loadUsers() {
+    fetch(`${API_BASE}/admin/users`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json())
+      .then((d) => setUsers(d.users || []))
+      .catch(() => setError("Failed to load users"));
+  }
+
+  useEffect(() => { loadUsers(); }, [token]);
+
+  async function handleAddUser(e) {
+    e.preventDefault();
+    if (!newUsername || !newPassword) return;
+    setStatus("Adding user…");
+    setError("");
+    try {
+      const res = await fetch(`${API_BASE}/admin/users`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ username: newUsername, password: newPassword, role: newRole }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Failed to add user");
+      }
+      setStatus(`User '${newUsername}' added successfully.`);
+      setNewUsername("");
+      setNewPassword("");
+      loadUsers();
+    } catch (err) {
+      setError(err.message);
+      setStatus("");
+    }
+  }
+
+  async function handleDeleteUser(username) {
+    setStatus(`Deleting ${username}…`);
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/${username}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -294,82 +509,110 @@ function DocumentManager({ token }) {
         const err = await res.json();
         throw new Error(err.detail || "Delete failed");
       }
-      setMessage(`Deleted and re-indexed: ${filename}`);
-      load();
+      setStatus(`User '${username}' deleted.`);
+      loadUsers();
     } catch (err) {
       setError(err.message);
-    } finally {
-      setBusy(false);
+      setStatus("");
     }
   }
 
-  if (error && !data) return <div style={{ padding: 20, color: "crimson" }}>{error}</div>;
-  if (!data) return <div style={{ padding: 20 }}>Loading...</div>;
+  async function handleChangePassword(e) {
+    e.preventDefault();
+    if (!selectedUser || !changePasswordVal) return;
+    setStatus(`Updating password for ${selectedUser}…`);
+    setError("");
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/change-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ username: selectedUser, new_password: changePasswordVal }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Failed to change password");
+      }
+      setStatus(`Password for '${selectedUser}' updated successfully.`);
+      setSelectedUser("");
+      setChangePasswordVal("");
+    } catch (err) {
+      setError(err.message);
+      setStatus("");
+    }
+  }
 
   return (
-    <div style={{ padding: 24, maxWidth: 700, margin: "0 auto" }}>
-      <h2>Manage Documents</h2>
+    <div className="admin-shell fade-in">
+      <h2 className="admin-title">Manage System Users</h2>
 
-      <form onSubmit={handleUpload} style={{ background: "#fff", padding: 16, borderRadius: 10, marginBottom: 20 }}>
-        <h3 style={{ marginTop: 0 }}>Upload a new PDF</h3>
-        <select style={styles.input} value={department} onChange={(e) => setDepartment(e.target.value)}>
-          {data.departments.map((d) => <option key={d} value={d}>{d}</option>)}
-        </select>
-        <input
-          style={styles.input}
-          type="file"
-          accept="application/pdf"
-          onChange={(e) => setFile(e.target.files[0])}
-        />
-        <button style={styles.primaryBtn} disabled={busy || !file}>
-          {busy ? "Uploading + re-indexing..." : "Upload"}
+      <div className="section-label">Add New User</div>
+      <form className="upload-panel" onSubmit={handleAddUser} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 12, alignItems: "end" }}>
+        <div>
+          <label className="field-label">Username</label>
+          <input className="text-input" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="e.g. john_hr" />
+        </div>
+        <div>
+          <label className="field-label">Initial Password</label>
+          <input className="text-input" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Password" />
+        </div>
+        <div>
+          <label className="field-label">Role / Access Level</label>
+          <select className="select-input" value={newRole} onChange={(e) => setNewRole(e.target.value)}>
+            {rolesList.map((r) => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+        <button className="primary-btn" style={{ width: "auto", padding: "11px 20px" }} disabled={!newUsername || !newPassword}>
+          Add User
         </button>
       </form>
 
-      {message && <div style={{ color: "green", marginBottom: 12 }}>{message}</div>}
-      {error && <div style={styles.error}>{error}</div>}
+      <div className="section-label" style={{ marginTop: 24 }}>Change User Password</div>
+      <form className="upload-panel" onSubmit={handleChangePassword} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12, alignItems: "end" }}>
+        <div>
+          <label className="field-label">Select User</label>
+          <select className="select-input" value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)}>
+            <option value="">-- Choose User --</option>
+            {users && users.map((u) => <option key={u.username} value={u.username}>{u.username} ({u.role})</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="field-label">New Password</label>
+          <input className="text-input" type="password" value={changePasswordVal} onChange={(e) => setChangePasswordVal(e.target.value)} placeholder="New Password" />
+        </div>
+        <button className="primary-btn" style={{ width: "auto", padding: "11px 20px" }} disabled={!selectedUser || !changePasswordVal}>
+          Update Password
+        </button>
+      </form>
 
-      <h3>Existing Documents ({data.documents.length})</h3>
-      <ul style={{ listStyle: "none", padding: 0 }}>
-        {data.documents.map((doc) => (
-          <li key={`${doc.department}/${doc.filename}`} style={styles.docRow}>
-            <span><strong>{doc.department}</strong> / {doc.filename} <span style={{ color: "#888" }}>({doc.size_kb} KB)</span></span>
-            <button
-              style={styles.deleteBtn}
-              disabled={busy}
-              onClick={() => handleDelete(doc.department, doc.filename)}
-            >
-              Delete
-            </button>
-          </li>
-        ))}
-      </ul>
+      {status && <div className="empty-note" style={{ marginBottom: 14 }}>{status}</div>}
+      {error && <div className="error-text" style={{ marginBottom: 14 }}>{error}</div>}
+
+      <div className="section-label" style={{ marginTop: 24 }}>Existing System Users</div>
+      {!users && <div className="empty-note">Loading users…</div>}
+      {users && (
+        <table className="doc-table">
+          <thead>
+            <tr><th>Username</th><th>Role / Access Level</th><th></th></tr>
+          </thead>
+          <tbody>
+            {users.map((u) => (
+              <tr key={u.username}>
+                <td><strong>{u.username}</strong></td>
+                <td>
+                  <span className="source-chip" style={{ background: deptSoftVar(u.role), color: deptVar(u.role) }}>
+                    {u.role}
+                  </span>
+                </td>
+                <td style={{ textAlign: "right" }}>
+                  {u.username !== "admin" && (
+                    <button className="delete-btn" onClick={() => handleDeleteUser(u.username)}>Delete User</button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }
-
-const styles = {
-  page: { fontFamily: "system-ui, sans-serif", minHeight: "100vh", background: "#f5f6f8" },
-  header: {
-    display: "flex", justifyContent: "space-between", alignItems: "center",
-    padding: "12px 20px", background: "#1a1a2e", color: "#fff",
-  },
-  roleTag: { marginLeft: 10, fontSize: 12, background: "#4a4a6a", padding: "2px 8px", borderRadius: 10 },
-  navBtn: { marginLeft: 8, background: "transparent", color: "#fff", border: "1px solid #555", padding: "6px 12px", borderRadius: 6, cursor: "pointer" },
-  loginPage: { display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#1a1a2e" },
-  loginCard: { background: "#fff", padding: 32, borderRadius: 12, width: 320, boxShadow: "0 10px 30px rgba(0,0,0,0.3)" },
-  input: { width: "100%", padding: 10, marginBottom: 10, borderRadius: 6, border: "1px solid #ccc", boxSizing: "border-box" },
-  primaryBtn: { background: "#4a4ae6", color: "#fff", border: "none", padding: "10px 18px", borderRadius: 6, cursor: "pointer" },
-  error: { color: "crimson", fontSize: 13, marginBottom: 10 },
-  chatContainer: { maxWidth: 700, margin: "0 auto", padding: 20, display: "flex", flexDirection: "column", height: "calc(100vh - 60px)" },
-  messages: { flex: 1, overflowY: "auto", marginBottom: 12 },
-  userBubble: { background: "#4a4ae6", color: "#fff", padding: "10px 14px", borderRadius: 12, marginBottom: 10, maxWidth: "75%", marginLeft: "auto" },
-  assistantBubble: { background: "#fff", padding: "10px 14px", borderRadius: 12, marginBottom: 10, maxWidth: "80%", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" },
-  sourceToggle: { background: "none", border: "none", color: "#4a4ae6", cursor: "pointer", fontSize: 12, padding: 0 },
-  sourceList: { fontSize: 12, color: "#555", marginTop: 6 },
-  inputRow: { display: "flex", gap: 8 },
-  statRow: { display: "flex", gap: 16, marginBottom: 20 },
-  statCard: { background: "#fff", padding: 16, borderRadius: 10, boxShadow: "0 1px 4px rgba(0,0,0,0.1)", flex: 1 },
-  docRow: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", padding: "10px 14px", borderRadius: 8, marginBottom: 8, boxShadow: "0 1px 4px rgba(0,0,0,0.1)" },
-  deleteBtn: { background: "#e64a4a", color: "#fff", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 12 },
-};

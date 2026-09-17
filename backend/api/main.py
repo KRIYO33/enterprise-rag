@@ -7,15 +7,24 @@ import jwt
 load_dotenv()
 
 from backend.ingestion.pipeline import run_ingestion, get_last_ingest_stats
-from backend.ingestion.document_manager import list_documents, save_upload, delete_document, ALLOWED_DEPARTMENTS
-from backend.auth.auth import authenticate, verify_token
+from backend.ingestion.document_manager import list_documents, save_upload, delete_document, get_departments, create_department
+from backend.auth.auth import authenticate, verify_token, list_users, add_user, delete_user, change_user_password
 from backend.retrieval.rag_chat import ask, get_recent_questions
 
 app = FastAPI(title="Enterprise Knowledge Assistant - API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],  # Vite dev + Docker frontend
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "*",
+    ],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -30,9 +39,25 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class AddUserRequest(BaseModel):
+    username: str
+    password: str
+    role: str
+
+
+class ChangePasswordRequest(BaseModel):
+    username: str
+    new_password: str
+
+
 class ChatRequest(BaseModel):
     query: str
     session_id: str = "default"
+
+
+@app.on_event("startup")
+def startup_event():
+    pass
 
 
 @app.get("/")
@@ -98,17 +123,42 @@ def admin_stats(authorization: str = Header(None)):
     }
 
 
-def require_admin(authorization: str = Header(None)) -> str:
-    user_role = get_role_from_header(authorization)
-    if user_role != "Admin":
-        raise HTTPException(status_code=403, detail="Admin access only")
-    return user_role
+def require_auth(authorization: str = Header(None)) -> str:
+    return get_role_from_header(authorization)
 
 
 @app.get("/admin/documents")
 def get_documents(authorization: str = Header(None)):
+    user_role = get_role_from_header(authorization)
+    all_docs = list_documents()
+    all_depts = get_departments()
+    if user_role == "Admin":
+        return {"departments": all_depts, "documents": all_docs}
+    else:
+        # Non-admin users can only view documents from their own department
+        filtered_docs = [d for d in all_docs if d["department"] == user_role]
+        allowed_depts = [d for d in all_depts if d == user_role]
+        return {"departments": allowed_depts, "documents": filtered_docs}
+
+
+@app.post("/admin/departments")
+async def add_department(
+    department: str = Form(...),
+    file: UploadFile = File(...),
+    authorization: str = Header(None),
+):
     require_admin(authorization)
-    return {"departments": ALLOWED_DEPARTMENTS, "documents": list_documents()}
+    if not file or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="A valid initial .pdf file is required to create a new department.")
+
+    file_bytes = await file.read()
+    try:
+        result = create_department(department, file.filename, file_bytes)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/admin/documents/upload")
@@ -117,7 +167,12 @@ async def upload_document(
     file: UploadFile = File(...),
     authorization: str = Header(None),
 ):
-    require_admin(authorization)
+    user_role = get_role_from_header(authorization)
+    if user_role != "Admin" and department != user_role:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Privacy policy violation: You can only upload documents to your own department ({user_role})"
+        )
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only .pdf files are allowed")
 
@@ -133,12 +188,66 @@ async def upload_document(
 
 @app.delete("/admin/documents/{department}/{filename}")
 def remove_document(department: str, filename: str, authorization: str = Header(None)):
-    require_admin(authorization)
+    user_role = get_role_from_header(authorization)
+    if user_role != "Admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Privacy restriction: Only Admin users are authorized to delete documents."
+        )
     try:
         result = delete_document(department, filename)
         return result
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def require_admin(authorization: str = Header(None)) -> str:
+    user_role = get_role_from_header(authorization)
+    if user_role != "Admin":
+        raise HTTPException(status_code=403, detail="Admin access only")
+    return user_role
+
+
+@app.get("/admin/users")
+def get_users(authorization: str = Header(None)):
+    require_admin(authorization)
+    return {"users": list_users()}
+
+
+@app.post("/admin/users")
+def create_user(req: AddUserRequest, authorization: str = Header(None)):
+    require_admin(authorization)
+    try:
+        result = add_user(req.username, req.password, req.role)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/admin/users/{username}")
+def remove_user(username: str, authorization: str = Header(None)):
+    require_admin(authorization)
+    try:
+        result = delete_user(username)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/admin/users/change-password")
+def update_password(req: ChangePasswordRequest, authorization: str = Header(None)):
+    require_admin(authorization)
+    try:
+        result = change_user_password(req.username, req.new_password)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
